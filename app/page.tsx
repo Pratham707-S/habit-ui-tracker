@@ -8,3 +8,5 @@ export default async function Home() {
   if (!session?.user) redirect("/login")
   redirect("/dashboard")
 }
+
+// Force rebuild - MongoDB env vars loaded
