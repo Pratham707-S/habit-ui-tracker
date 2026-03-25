@@ -1,5 +1,8 @@
 import mongoose from "mongoose"
 
+// Force reload on env change
+const _mongodbUri = process.env.MONGODB_URI
+
 type MongooseGlobal = typeof globalThis & {
   _mongoose?: {
     conn: typeof mongoose | null
