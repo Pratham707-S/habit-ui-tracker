@@ -1,10 +1,7 @@
 import mongoose from "mongoose"
 
-const MONGODB_URI = process.env.MONGODB_URI
-
-if (!MONGODB_URI) {
-  throw new Error("Missing env var: MONGODB_URI")
-}
+// Force reload on env change
+const _mongodbUri = process.env.MONGODB_URI
 
 type MongooseGlobal = typeof globalThis & {
   _mongoose?: {
@@ -20,6 +17,12 @@ if (!g._mongoose) {
 }
 
 export async function connectToDatabase() {
+  const MONGODB_URI = process.env.MONGODB_URI
+
+  if (!MONGODB_URI) {
+    throw new Error("Missing env var: MONGODB_URI")
+  }
+
   if (g._mongoose!.conn) return g._mongoose!.conn
 
   if (!g._mongoose!.promise) {
