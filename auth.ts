@@ -36,9 +36,6 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
-  pages: {
-    signIn: "/login",
-  },
   callbacks: {
     jwt: async ({ token, user }) => {
       if (user && "id" in user && typeof user.id === "string") token.sub = user.id
@@ -56,4 +53,3 @@ export const authOptions: NextAuthOptions = {
 export function auth() {
   return getServerSession(authOptions)
 }
-

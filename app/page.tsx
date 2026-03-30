@@ -1,10 +1,5 @@
-import { redirect } from "next/navigation"
+import { HabitTracker } from "@/components/habit-tracker"
 
-import { auth } from "@/auth"
-
-export default async function Home() {
-  // Keep UI on /dashboard; send users where they belong
-  const session = await auth()
-  if (!session?.user) redirect("/login")
-  redirect("/dashboard")
+export default function Home() {
+  return <HabitTracker />
 }

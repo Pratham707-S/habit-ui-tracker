@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { Plus, Trash2, Check, ChevronLeft, ChevronRight } from "lucide-react"
-import { signOut, useSession } from "next-auth/react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -91,9 +90,35 @@ function currentMonthKey() {
 }
 
 const MONTH_STORAGE_KEY = "habit-tracker-month"
+const HABITS_STORAGE_PREFIX = "habit-tracker-habits"
+
+function habitsStorageKey(month: string) {
+  return `${HABITS_STORAGE_PREFIX}-${month}`
+}
+
+function loadLocalHabits(month: string) {
+  if (typeof window === "undefined") return defaultHabits
+
+  try {
+    const raw = localStorage.getItem(habitsStorageKey(month))
+    if (!raw) return defaultHabits
+
+    const parsed = JSON.parse(raw) as Habit[]
+    return Array.isArray(parsed) && parsed.length ? parsed : defaultHabits
+  } catch {
+    return defaultHabits
+  }
+}
+
+function saveLocalHabits(month: string, habits: Habit[]) {
+  if (typeof window === "undefined") return
+
+  try {
+    localStorage.setItem(habitsStorageKey(month), JSON.stringify(habits))
+  } catch {}
+}
 
 export function HabitTracker() {
-  const { data: session } = useSession()
   const [habits, setHabits] = useState<Habit[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
   const [isFetching, setIsFetching] = useState(false)
@@ -119,6 +144,7 @@ export function HabitTracker() {
 
   useEffect(() => {
     let cancelled = false
+
     async function load() {
       setIsFetching(true)
       try {
@@ -126,44 +152,49 @@ export function HabitTracker() {
           cache: "no-store",
         })
         if (!res.ok) throw new Error("Failed to load")
+
         const data = (await res.json()) as { habits: Habit[] }
-        if (!cancelled) {
-          if (data.habits?.length) {
-            setHabits(data.habits)
-          } else {
-            // First-time user: seed defaults to preserve the existing UI experience.
-            const created: Habit[] = []
-            for (const h of defaultHabits) {
-              const r = await fetch("/api/habits", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  name: h.name,
-                  emoji: h.emoji,
-                  goal: h.goal,
-                  month: currentMonth,
-                }),
-              })
-              if (r.ok) {
-                const body = (await r.json()) as { habit: Habit }
-                created.push(body.habit)
-              }
+        if (cancelled) return
+
+        if (data.habits?.length) {
+          setHabits(data.habits)
+          saveLocalHabits(currentMonth, data.habits)
+        } else {
+          const created: Habit[] = []
+          for (const h of defaultHabits) {
+            const r = await fetch("/api/habits", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: h.name,
+                emoji: h.emoji,
+                goal: h.goal,
+                month: currentMonth,
+              }),
+            })
+            if (r.ok) {
+              const body = (await r.json()) as { habit: Habit }
+              created.push(body.habit)
             }
-            setHabits(created.length ? created : [])
           }
-          setIsLoaded(true)
-          setIsFetching(false)
+
+          if (cancelled) return
+          setHabits(created)
+          saveLocalHabits(currentMonth, created)
         }
       } catch {
+        if (cancelled) return
+        const localHabits = loadLocalHabits(currentMonth)
+        setHabits(localHabits)
+        toast.error("Could not load habits from MongoDB")
+      } finally {
         if (!cancelled) {
-          // If API fails (e.g. DB not configured yet), keep UI usable.
-          setHabits(defaultHabits)
           setIsLoaded(true)
           setIsFetching(false)
-          toast.error("Could not load habits from server")
         }
       }
     }
+
     void load()
     return () => {
       cancelled = true
@@ -176,7 +207,6 @@ export function HabitTracker() {
     if (savingHabitIds[habitId]) return
     setSavingHabitIds((prev) => ({ ...prev, [habitId]: true }))
     // Optimistic update
-    const prevHabits = habits
     const next = habits.map((habit) => {
       if (habit.id !== habitId) return habit
       const completedDays = { ...habit.completedDays, [dayKey]: !habit.completedDays[dayKey] }
@@ -189,6 +219,7 @@ export function HabitTracker() {
       setSavingHabitIds((prev) => ({ ...prev, [habitId]: false }))
       return
     }
+
     try {
       const res = await fetch(`/api/habits/${habitId}`, {
         method: "PATCH",
@@ -196,9 +227,10 @@ export function HabitTracker() {
         body: JSON.stringify({ completedDays: updated.completedDays }),
       })
       if (!res.ok) throw new Error("Failed")
+      saveLocalHabits(currentMonth, next)
       toast.success("Habit updated")
     } catch {
-      setHabits(prevHabits)
+      setHabits(loadLocalHabits(currentMonth))
       toast.error("Failed to update habit")
     } finally {
       setSavingHabitIds((prev) => ({ ...prev, [habitId]: false }))
@@ -210,27 +242,37 @@ export function HabitTracker() {
     if (isCreating) return
     setIsCreating(true)
     const goal = parseInt(newHabitGoal) || 30
-    const res = await fetch("/api/habits", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newHabitName, emoji: newHabitEmoji, goal, month: currentMonth }),
-    }).catch(() => null)
 
-    if (res && res.ok) {
+    const newHabit: Habit = {
+      id: Date.now().toString(),
+      name: newHabitName,
+      emoji: newHabitEmoji,
+      goal,
+      completedDays: {},
+    }
+
+    try {
+      const res = await fetch("/api/habits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newHabitName, emoji: newHabitEmoji, goal, month: currentMonth }),
+      })
+      if (!res.ok) throw new Error("Failed")
+
       const data = (await res.json()) as { habit: Habit }
-      setHabits((prev) => [...prev, data.habit])
+      setHabits((prev) => {
+        const next = [...prev, data.habit]
+        saveLocalHabits(currentMonth, next)
+        return next
+      })
       toast.success("Habit created")
-    } else {
-      // Fallback: keep UX working even if DB isn't configured.
-      const newHabit: Habit = {
-        id: Date.now().toString(),
-        name: newHabitName,
-        emoji: newHabitEmoji,
-        goal,
-        completedDays: {},
-      }
-      setHabits((prev) => [...prev, newHabit])
-      toast.error("Failed to create habit")
+    } catch {
+      setHabits((prev) => {
+        const next = [...prev, newHabit]
+        saveLocalHabits(currentMonth, next)
+        return next
+      })
+      toast.error("Failed to create habit in MongoDB")
     }
 
     setNewHabitName("")
@@ -243,12 +285,17 @@ export function HabitTracker() {
   const deleteHabit = async (habitId: string) => {
     if (deletingHabitIds[habitId]) return
     setDeletingHabitIds((prev) => ({ ...prev, [habitId]: true }))
-    setHabits((prev) => prev.filter((h) => h.id !== habitId))
+    const previousHabits = habits
+    const next = habits.filter((h) => h.id !== habitId)
+    setHabits(next)
+
     try {
       const res = await fetch(`/api/habits/${habitId}`, { method: "DELETE" })
       if (!res.ok) throw new Error("Failed")
+      saveLocalHabits(currentMonth, next)
       toast.success("Habit deleted")
     } catch {
+      setHabits(previousHabits)
       toast.error("Failed to delete habit")
     } finally {
       setDeletingHabitIds((prev) => ({ ...prev, [habitId]: false }))
@@ -297,15 +344,6 @@ export function HabitTracker() {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            {session?.user ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => signOut({ callbackUrl: "/login" })}
-              >
-                Logout
-              </Button>
-            ) : null}
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-1.5">
