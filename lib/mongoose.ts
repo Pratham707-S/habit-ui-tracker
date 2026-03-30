@@ -28,6 +28,10 @@ export async function connectToDatabase() {
         bufferCommands: false,
       })
       .then((m) => m)
+      .catch((error) => {
+        g._mongoose!.promise = null
+        throw error
+      })
   }
 
   g._mongoose!.conn = await g._mongoose!.promise
