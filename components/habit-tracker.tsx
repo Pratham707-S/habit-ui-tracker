@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Plus, Trash2, Check, ChevronLeft, ChevronRight } from "lucide-react"
+import { signOut, useSession } from "next-auth/react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -90,35 +91,9 @@ function currentMonthKey() {
 }
 
 const MONTH_STORAGE_KEY = "habit-tracker-month"
-const HABITS_STORAGE_PREFIX = "habit-tracker-habits"
-
-function habitsStorageKey(month: string) {
-  return `${HABITS_STORAGE_PREFIX}-${month}`
-}
-
-function loadLocalHabits(month: string) {
-  if (typeof window === "undefined") return defaultHabits
-
-  try {
-    const raw = localStorage.getItem(habitsStorageKey(month))
-    if (!raw) return defaultHabits
-
-    const parsed = JSON.parse(raw) as Habit[]
-    return Array.isArray(parsed) && parsed.length ? parsed : defaultHabits
-  } catch {
-    return defaultHabits
-  }
-}
-
-function saveLocalHabits(month: string, habits: Habit[]) {
-  if (typeof window === "undefined") return
-
-  try {
-    localStorage.setItem(habitsStorageKey(month), JSON.stringify(habits))
-  } catch {}
-}
 
 export function HabitTracker() {
+  const { data: session } = useSession()
   const [habits, setHabits] = useState<Habit[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
   const [isFetching, setIsFetching] = useState(false)
@@ -158,7 +133,6 @@ export function HabitTracker() {
 
         if (data.habits?.length) {
           setHabits(data.habits)
-          saveLocalHabits(currentMonth, data.habits)
         } else {
           const created: Habit[] = []
           for (const h of defaultHabits) {
@@ -180,13 +154,11 @@ export function HabitTracker() {
 
           if (cancelled) return
           setHabits(created)
-          saveLocalHabits(currentMonth, created)
         }
       } catch {
         if (cancelled) return
-        const localHabits = loadLocalHabits(currentMonth)
-        setHabits(localHabits)
-        toast.error("Could not load habits from MongoDB")
+        setHabits([])
+        toast.error("Could not load habits")
       } finally {
         if (!cancelled) {
           setIsLoaded(true)
@@ -206,7 +178,7 @@ export function HabitTracker() {
   const toggleDay = async (habitId: string, dayKey: string) => {
     if (savingHabitIds[habitId]) return
     setSavingHabitIds((prev) => ({ ...prev, [habitId]: true }))
-    // Optimistic update
+    const prevHabits = habits
     const next = habits.map((habit) => {
       if (habit.id !== habitId) return habit
       const completedDays = { ...habit.completedDays, [dayKey]: !habit.completedDays[dayKey] }
@@ -227,10 +199,9 @@ export function HabitTracker() {
         body: JSON.stringify({ completedDays: updated.completedDays }),
       })
       if (!res.ok) throw new Error("Failed")
-      saveLocalHabits(currentMonth, next)
       toast.success("Habit updated")
     } catch {
-      setHabits(loadLocalHabits(currentMonth))
+      setHabits(prevHabits)
       toast.error("Failed to update habit")
     } finally {
       setSavingHabitIds((prev) => ({ ...prev, [habitId]: false }))
@@ -243,14 +214,6 @@ export function HabitTracker() {
     setIsCreating(true)
     const goal = parseInt(newHabitGoal) || 30
 
-    const newHabit: Habit = {
-      id: Date.now().toString(),
-      name: newHabitName,
-      emoji: newHabitEmoji,
-      goal,
-      completedDays: {},
-    }
-
     try {
       const res = await fetch("/api/habits", {
         method: "POST",
@@ -260,19 +223,10 @@ export function HabitTracker() {
       if (!res.ok) throw new Error("Failed")
 
       const data = (await res.json()) as { habit: Habit }
-      setHabits((prev) => {
-        const next = [...prev, data.habit]
-        saveLocalHabits(currentMonth, next)
-        return next
-      })
+      setHabits((prev) => [...prev, data.habit])
       toast.success("Habit created")
     } catch {
-      setHabits((prev) => {
-        const next = [...prev, newHabit]
-        saveLocalHabits(currentMonth, next)
-        return next
-      })
-      toast.error("Failed to create habit in MongoDB")
+      toast.error("Failed to create habit")
     }
 
     setNewHabitName("")
@@ -292,7 +246,6 @@ export function HabitTracker() {
     try {
       const res = await fetch(`/api/habits/${habitId}`, { method: "DELETE" })
       if (!res.ok) throw new Error("Failed")
-      saveLocalHabits(currentMonth, next)
       toast.success("Habit deleted")
     } catch {
       setHabits(previousHabits)
@@ -344,6 +297,15 @@ export function HabitTracker() {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
+            {session?.user ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => signOut({ callbackUrl: "/login" })}
+              >
+                Logout
+              </Button>
+            ) : null}
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-1.5">

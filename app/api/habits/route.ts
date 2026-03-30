@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { auth } from "@/auth"
 import { connectToDatabase } from "@/lib/mongoose"
 import { Habit } from "@/models/Habit"
-
-const SHARED_HABIT_OWNER_ID = "000000000000000000000001"
 
 function currentMonthKey() {
   const d = new Date()
@@ -25,13 +24,17 @@ const CreateHabitSchema = z.object({
 })
 
 export async function GET(req: Request) {
+  const session = await auth()
+  const userId = (session?.user as { id?: string } | undefined)?.id
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
   const url = new URL(req.url)
   const monthParam = url.searchParams.get("month")
   const monthParsed = monthParam ? MonthSchema.safeParse(monthParam) : null
   const month = monthParsed?.success ? monthParsed.data : currentMonthKey()
 
   await connectToDatabase()
-  const habits = await Habit.find({ userId: SHARED_HABIT_OWNER_ID, month }).sort({ createdAt: 1 }).lean()
+  const habits = await Habit.find({ userId, month }).sort({ createdAt: 1 }).lean()
 
   return NextResponse.json({
     month,
@@ -46,6 +49,10 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const session = await auth()
+  const userId = (session?.user as { id?: string } | undefined)?.id
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
   const json = await req.json().catch(() => null)
   const parsed = CreateHabitSchema.safeParse(json)
   if (!parsed.success) {
@@ -56,7 +63,7 @@ export async function POST(req: Request) {
   const month = parsed.data.month ?? currentMonthKey()
   const created = await Habit.create({
     title: parsed.data.name,
-    userId: SHARED_HABIT_OWNER_ID,
+    userId,
     month,
     days: {},
     emoji: parsed.data.emoji ?? "⏰",
