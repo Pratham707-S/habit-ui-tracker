@@ -1,8 +1,20 @@
 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="180" height="180" rx="40" fill="#2563EB"/>
-  <rect x="42" y="42" width="96" height="96" rx="24" fill="#FFFFFF" fill-opacity="0.16"/>
-  <rect x="56" y="58" width="14" height="14" rx="7" fill="#FFFFFF"/>
-  <rect x="83" y="58" width="14" height="14" rx="7" fill="#FFFFFF"/>
-  <rect x="110" y="58" width="14" height="14" rx="7" fill="#FFFFFF"/>
-  <path d="M63 101L81 119L118 82" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="bg" x1="24" y1="18" x2="156" y2="162" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="44" y1="44" x2="136" y2="136" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#22C55E"/>
+    </linearGradient>
+  </defs>
+  <rect width="180" height="180" rx="40" fill="url(#bg)"/>
+  <rect x="36" y="34" width="108" height="112" rx="28" fill="#0B1220" stroke="#334155" stroke-width="4"/>
+  <rect x="36" y="34" width="108" height="24" rx="12" fill="url(#accent)"/>
+  <circle cx="62" cy="47" r="6" fill="#F8FAFC"/>
+  <circle cx="90" cy="47" r="6" fill="#F8FAFC"/>
+  <circle cx="118" cy="47" r="6" fill="#F8FAFC"/>
+  <path d="M59 101L78 120L121 77" stroke="url(#accent)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M58 138H122" stroke="#334155" stroke-width="8" stroke-linecap="round"/>
 </svg>
