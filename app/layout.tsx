@@ -8,7 +8,6 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'Habit Tracker',
   description: 'Track your daily habits and build better routines',
-  generator: 'v0.app',
   icons: {
     icon: [
       {
